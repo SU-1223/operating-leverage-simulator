@@ -505,6 +505,113 @@ tbody tr.highlight-row td {
   margin-top: 4px;
 }
 
+/* Company Search */
+.search-section {
+  margin-top: 16px;
+  position: relative;
+}
+
+.search-input-wrapper {
+  position: relative;
+}
+
+.search-input {
+  width: 100%;
+  padding: 12px 16px;
+  font-size: 15px;
+  border: 2px solid #e2e8f0;
+  border-radius: 8px;
+  background: #fff;
+  color: #1e293b;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.search-input:focus {
+  border-color: #2563eb;
+}
+
+.search-input::placeholder {
+  color: #94a3b8;
+}
+
+.search-spinner {
+  position: absolute;
+  right: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #2563eb;
+  font-weight: 600;
+}
+
+.search-results {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: #fff;
+  border: 2px solid #e2e8f0;
+  border-top: none;
+  border-radius: 0 0 8px 8px;
+  list-style: none;
+  max-height: 240px;
+  overflow-y: auto;
+  z-index: 100;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.search-result-item {
+  padding: 10px 16px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  transition: background 0.15s;
+}
+
+.search-result-item:hover {
+  background: #eff6ff;
+}
+
+.search-ticker {
+  font-weight: 700;
+  color: #2563eb;
+  font-size: 14px;
+  min-width: 60px;
+}
+
+.search-name {
+  font-size: 14px;
+  color: #475569;
+  flex: 1;
+}
+
+.search-loading {
+  font-size: 12px;
+  color: #2563eb;
+  font-weight: 600;
+}
+
+.upload-divider {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin: 16px 0;
+  color: #94a3b8;
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.upload-divider::before,
+.upload-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: #e2e8f0;
+}
+
 /* Responsive */
 @media (max-width: 768px) {
   .hero h1 {

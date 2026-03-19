@@ -32,8 +32,7 @@ export default function UploadArea({ onFilesSelected, statusMessage, statusType 
   }, [onFilesSelected]);
 
   return (
-    <section className="section">
-      <h2>Upload 10-K Filings</h2>
+    <>
       <div
         className={`upload-area${dragOver ? ' drag-over' : ''}`}
         onClick={handleClick}
@@ -64,6 +63,6 @@ export default function UploadArea({ onFilesSelected, statusMessage, statusType 
           dangerouslySetInnerHTML={{ __html: statusMessage }}
         />
       )}
-    </section>
+    </>
   );
 }

@@ -3,6 +3,7 @@ import Head from 'next/head';
 import dynamic from 'next/dynamic';
 import Header from '../components/Header';
 import UploadArea from '../components/UploadArea';
+import CompanySearch from '../components/CompanySearch';
 import FinancialInputs from '../components/FinancialInputs';
 import CostSliders from '../components/CostSliders';
 import ResultsTable from '../components/ResultsTable';
@@ -69,6 +70,28 @@ export default function Home() {
     });
     setSelectedIndex((prev) => (prev >= companies.length - 1 ? companies.length - 2 : prev));
   }, [selectedIndex, companies.length]);
+
+  const handleCompanyLoaded = useCallback((newCompany) => {
+    setCompanies((prev) => {
+      const existingIdx = prev.findIndex((c) => c.name === newCompany.name);
+      if (existingIdx >= 0) {
+        const updated = [...prev];
+        updated[existingIdx] = newCompany;
+        setSelectedIndex(existingIdx);
+        return updated;
+      } else if (prev.length === 1 && prev[0].name.startsWith('Company ')) {
+        setSelectedIndex(0);
+        return [newCompany];
+      } else {
+        setSelectedIndex(prev.length);
+        return [...prev, newCompany];
+      }
+    });
+  }, []);
+
+  const handleSearchStatus = useCallback((message, type) => {
+    setUploadStatus({ message, type });
+  }, []);
 
   const handleFilesSelected = useCallback(async (files) => {
     for (let i = 0; i < files.length; i++) {
@@ -146,11 +169,19 @@ export default function Home() {
       <Header />
 
       <main className="container">
-        <UploadArea
-          onFilesSelected={handleFilesSelected}
-          statusMessage={uploadStatus.message}
-          statusType={uploadStatus.type}
-        />
+        <section className="section">
+          <h2>Load 10-K Data</h2>
+          <CompanySearch
+            onCompanyLoaded={handleCompanyLoaded}
+            onStatusChange={handleSearchStatus}
+          />
+          <div className="upload-divider">or</div>
+          <UploadArea
+            onFilesSelected={handleFilesSelected}
+            statusMessage={uploadStatus.message}
+            statusType={uploadStatus.type}
+          />
+        </section>
 
         <section className="section input-panel">
           <div className="input-grid">
