@@ -1,13 +1,31 @@
 import { useState, useCallback, useRef } from 'react';
-import { searchCompanies, getFilings, fetchFilingContent, htmlToText } from '../lib/secClient';
-import { extractFinancials, detectIndustry, toMillions } from '../lib/pdfParser';
+import { searchCompanies, getFilings, getCompanyFacts } from '../lib/secClient';
 import { INDUSTRY_PROFILES } from '../lib/constants';
+
+function toMillions(value) {
+  if (value > 1000000) return Math.round(value / 1000000);
+  if (value > 10000) return Math.round(value / 1000);
+  return Math.round(value);
+}
+
+function detectIndustryFromSic(sic, sicDescription) {
+  const desc = (sicDescription || '').toLowerCase();
+  if (desc.includes('motor') || desc.includes('vehicle') || desc.includes('auto')) return 'automotive';
+  if (desc.includes('software') || desc.includes('computer') || desc.includes('data processing')) return 'software';
+  if (desc.includes('pharma') || desc.includes('drug') || desc.includes('biolog')) return 'pharma';
+  if (desc.includes('retail') || desc.includes('store')) return 'retail';
+  if (desc.includes('oil') || desc.includes('gas') || desc.includes('energy') || desc.includes('petrol')) return 'energy';
+  if (desc.includes('bank') || desc.includes('financ') || desc.includes('insur')) return 'financial';
+  if (desc.includes('broadcast') || desc.includes('motion picture') || desc.includes('entertain')) return 'media';
+  if (desc.includes('semiconductor') || desc.includes('electronic')) return 'tech_hardware';
+  return 'default';
+}
 
 export default function CompanySearch({ onCompanyLoaded, onStatusChange }) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
   const [searching, setSearching] = useState(false);
-  const [loading, setLoading] = useState(null); // ticker being loaded
+  const [loading, setLoading] = useState(null);
   const debounceRef = useRef(null);
 
   const handleSearch = useCallback(async (value) => {
@@ -39,64 +57,44 @@ export default function CompanySearch({ onCompanyLoaded, onStatusChange }) {
     onStatusChange('Loading ' + company.name + ' (' + company.ticker + ') from SEC EDGAR...', 'loading');
 
     try {
-      // Step 1: Get filing list
+      // Step 1: Get filing info (for date display)
       const filingsData = await getFilings(company.cik);
-      if (!filingsData.filings || filingsData.filings.length === 0) {
-        onStatusChange('No 10-K filings found for ' + company.name, 'error');
-        setLoading(null);
-        return;
-      }
+      const filingDate = filingsData.filings?.[0]?.filingDate || 'N/A';
 
-      // Step 2: Fetch the most recent 10-K
-      const filing = filingsData.filings[0];
-      onStatusChange(
-        'Downloading 10-K (' + filing.filingDate + ') for ' + company.name + '...',
-        'loading'
+      // Step 2: Get XBRL financial facts
+      onStatusChange('Extracting financial data for ' + company.name + '...', 'loading');
+      const factsData = await getCompanyFacts(company.cik);
+      const financials = factsData.financials;
+
+      // Step 3: Determine industry from SIC code
+      const industryKey = detectIndustryFromSic(
+        filingsData.company?.sic,
+        filingsData.company?.sicDescription
       );
-
-      const html = await fetchFilingContent(
-        filing.accessionNumber,
-        filing.primaryDocument,
-        company.cik
-      );
-
-      // Step 3: Convert HTML to text and extract financials
-      const text = htmlToText(html);
-      if (text.length < 100) {
-        onStatusChange('Could not extract text from 10-K filing.', 'error');
-        setLoading(null);
-        return;
-      }
-
-      const industryKey = detectIndustry(text);
       const profile = INDUSTRY_PROFILES[industryKey];
-      const financials = extractFinancials(text);
 
       const newCompany = {
-        name: filingsData.company?.name || company.name,
-        revenue: financials.revenue !== null ? toMillions(financials.revenue) : 1000,
-        cogs: financials.cogs !== null ? toMillions(financials.cogs) : 800,
-        rd: financials.rd !== null ? toMillions(financials.rd) : 150,
-        sga: financials.sga !== null ? toMillions(financials.sga) : 100,
-        deliveries: financials.deliveries !== null ? financials.deliveries : 50000,
-        cogsFix: (financials.estimatedSplits?.cogsFix !== null && financials.estimatedSplits?.cogsFix !== undefined)
-          ? financials.estimatedSplits.cogsFix : profile.cogsFix,
-        rdFix: (financials.estimatedSplits?.rdFix !== null && financials.estimatedSplits?.rdFix !== undefined)
-          ? financials.estimatedSplits.rdFix : profile.rdFix,
-        sgaFix: (financials.estimatedSplits?.sgaFix !== null && financials.estimatedSplits?.sgaFix !== undefined)
-          ? financials.estimatedSplits.sgaFix : profile.sgaFix,
+        name: filingsData.company?.name || factsData.entityName || company.name,
+        revenue: financials.revenue ? toMillions(financials.revenue) : 1000,
+        cogs: financials.cogs ? toMillions(financials.cogs) : 800,
+        rd: financials.rd ? toMillions(financials.rd) : 150,
+        sga: financials.sga ? toMillions(financials.sga) : 100,
+        deliveries: 50000,
+        cogsFix: financials.estimatedSplits?.cogsFix ?? profile.cogsFix,
+        rdFix: financials.estimatedSplits?.rdFix ?? profile.rdFix,
+        sgaFix: financials.estimatedSplits?.sgaFix ?? profile.sgaFix,
       };
 
-      onCompanyLoaded(newCompany, financials, profile);
+      onCompanyLoaded(newCompany);
 
-      const found = [financials.revenue, financials.cogs, financials.rd, financials.sga, financials.deliveries]
+      const found = [financials.revenue, financials.cogs, financials.rd, financials.sga]
         .filter((v) => v !== null);
-      let msg = '<strong>' + newCompany.name + '</strong> loaded from SEC EDGAR (10-K: ' + filing.filingDate + '). Extracted ' + found.length + '/5 figures.';
+      let msg = '<strong>' + newCompany.name + '</strong> loaded from SEC EDGAR (10-K: ' + filingDate + '). Extracted ' + found.length + '/4 financial figures.';
       if (financials.estimatedSplits) {
         msg += '<div class="detected-industry">Fixed/Variable split estimated via High-Low method: ' +
           'COGS ' + newCompany.cogsFix + '% fixed, R&D ' + newCompany.rdFix + '% fixed, SG&A ' + newCompany.sgaFix + '% fixed</div>';
       } else {
-        msg += '<div class="detected-industry">Industry: <strong>' + profile.label + '</strong> (split estimated from industry averages)</div>';
+        msg += '<div class="detected-industry">Industry: <strong>' + profile.label + '</strong> (' + (filingsData.company?.sicDescription || '') + ')</div>';
       }
       onStatusChange(msg, 'success');
     } catch (err) {
