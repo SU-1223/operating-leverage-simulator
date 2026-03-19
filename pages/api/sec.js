@@ -58,6 +58,59 @@ function getAnnualValues(factData, limit = 3) {
   return unique.length >= 2 ? unique.reverse() : null; // oldest first
 }
 
+// Search all namespaces for volume/delivery/unit concepts
+function extractVolumeFromFacts(facts) {
+  const volumeKeywords = [
+    'delivery', 'deliveries', 'unitssold', 'vehicledelivery', 'vehicledeliveries',
+    'vehiclessold', 'production', 'unitsdelivered', 'unitsshipped',
+    'subscriber', 'subscribers', 'customers', 'users', 'activeusers',
+    'shipments', 'devicesold', 'hardwareunitssold',
+  ];
+
+  let bestMatch = null;
+  let bestVal = null;
+
+  for (const [namespace, concepts] of Object.entries(facts)) {
+    if (!concepts || typeof concepts !== 'object') continue;
+    for (const [conceptName, conceptData] of Object.entries(concepts)) {
+      const lower = conceptName.toLowerCase().replace(/[^a-z]/g, '');
+      const isVolumeRelated = volumeKeywords.some((kw) => lower.includes(kw));
+      if (!isVolumeRelated) continue;
+
+      // Look for pure unit counts (not USD values)
+      if (!conceptData?.units) continue;
+      // Prefer "pure" unit (non-USD, non-shares) data
+      const unitKeys = Object.keys(conceptData.units);
+      const nonMonetary = unitKeys.find(
+        (u) => u !== 'USD' && u !== 'USD/shares' && u !== 'shares'
+      );
+      const unitKey = nonMonetary || unitKeys.find((u) => u === 'pure') || null;
+      if (!unitKey && conceptData.units.USD) continue; // skip monetary values
+
+      const entries = conceptData.units[unitKey || unitKeys[0]] || [];
+      const annual = entries
+        .filter((d) => d.form === '10-K' && d.val !== undefined && d.val > 0 && d.end)
+        .sort((a, b) => (b.end || '').localeCompare(a.end || ''));
+
+      if (annual.length > 0) {
+        const val = annual[0].val;
+        // Prefer larger, more meaningful volume numbers
+        if (!bestVal || val > bestVal) {
+          bestVal = val;
+          bestMatch = {
+            concept: `${namespace}:${conceptName}`,
+            value: val,
+            period: annual[0].end,
+            unit: unitKey || unitKeys[0],
+          };
+        }
+      }
+    }
+  }
+
+  return bestMatch;
+}
+
 function extractFinancialsFromFacts(facts) {
   const usGaap = facts['us-gaap'] || {};
 
@@ -148,7 +201,10 @@ function extractFinancialsFromFacts(facts) {
     }
   }
 
-  return { revenue, cogs, rd, sga, estimatedSplits };
+  // Volume / deliveries
+  const volumeData = extractVolumeFromFacts(facts);
+
+  return { revenue, cogs, rd, sga, estimatedSplits, volume: volumeData };
 }
 
 export default async function handler(req, res) {
