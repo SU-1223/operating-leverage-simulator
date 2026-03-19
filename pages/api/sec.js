@@ -24,33 +24,37 @@ export default async function handler(req, res) {
 
   try {
     if (action === 'search' && query) {
-      // Search for companies by name or ticker using EDGAR full-text search
-      const searchUrl = `https://efts.sec.gov/LATEST/search-index?q=%22${encodeURIComponent(query)}%22&dateRange=custom&startdt=2024-01-01&forms=10-K&hits.hits.total=10&hits.hits._source=file_date,entity_name,file_num,period_of_report,entity_id,file_type`;
-      const secRes = await fetchSEC(searchUrl);
-
-      // Also try the company tickers endpoint for exact match
+      // Search using SEC company tickers list
       const tickerRes = await fetchSEC('https://www.sec.gov/files/company_tickers.json');
       const tickers = await tickerRes.json();
 
-      // Find matching companies
-      const matches = [];
+      // Find matching companies — exact ticker match first, then name match
+      const exactMatches = [];
+      const nameMatches = [];
       const queryLower = query.toLowerCase();
       for (const key of Object.keys(tickers)) {
         const entry = tickers[key];
-        if (
-          entry.ticker?.toLowerCase() === queryLower ||
-          entry.title?.toLowerCase().includes(queryLower)
+        if (entry.ticker?.toLowerCase() === queryLower) {
+          exactMatches.push({
+            cik: String(entry.cik_str).padStart(10, '0'),
+            ticker: entry.ticker,
+            name: entry.title,
+          });
+        } else if (
+          entry.title?.toLowerCase().includes(queryLower) ||
+          entry.ticker?.toLowerCase().includes(queryLower)
         ) {
-          matches.push({
+          nameMatches.push({
             cik: String(entry.cik_str).padStart(10, '0'),
             ticker: entry.ticker,
             name: entry.title,
           });
         }
-        if (matches.length >= 10) break;
+        if (exactMatches.length + nameMatches.length >= 20) break;
       }
 
-      return res.status(200).json({ results: matches });
+      const results = [...exactMatches, ...nameMatches].slice(0, 10);
+      return res.status(200).json({ results });
     }
 
     if (action === 'filings' && cik) {
