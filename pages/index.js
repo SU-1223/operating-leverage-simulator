@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useRef } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import Head from 'next/head';
 import dynamic from 'next/dynamic';
 import Header from '../components/Header';
@@ -14,7 +14,6 @@ import { extractTextFromPDF, extractFinancials, detectIndustry, extractCompanyNa
 const ComparisonChart = dynamic(() => import('../components/ComparisonChart'), { ssr: false });
 
 export default function Home() {
-  const searchRef = useRef(null);
   const [companies, setCompanies] = useState([{ ...DEFAULT_COMPANY }]);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [selectedMetric, setSelectedMetric] = useState('opIncome');
@@ -154,11 +153,6 @@ export default function Home() {
           msg += '<div class="detected-industry">Industry: <strong>' + profile.label + '</strong> (split estimated from industry averages)</div>';
         }
         setUploadStatus({ message: msg, type: 'success' });
-
-        // Activate year selector by searching SEC for this company
-        if (searchRef.current) {
-          searchRef.current.activateYearSelector(companyName);
-        }
       } catch (err) {
         setUploadStatus({ message: 'Error reading PDF: ' + err.message, type: 'error' });
       }
@@ -178,7 +172,6 @@ export default function Home() {
         <section className="section">
           <h2>Load 10-K Data</h2>
           <CompanySearch
-            ref={searchRef}
             onCompanyLoaded={handleCompanyLoaded}
             onStatusChange={handleSearchStatus}
           />
