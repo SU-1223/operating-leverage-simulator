@@ -2,20 +2,21 @@ import { useState, useMemo, useCallback } from 'react';
 import Head from 'next/head';
 import dynamic from 'next/dynamic';
 import Header from '../components/Header';
-import PresetSelector from '../components/PresetSelector';
 import FinancialInputs from '../components/FinancialInputs';
 import CostSliders from '../components/CostSliders';
 import ResultsTable from '../components/ResultsTable';
-import { SCALE_MULTIPLIERS, DEFAULT_COMPANY } from '../lib/constants';
+import { SCALE_MULTIPLIERS } from '../lib/constants';
 import { calculateScenario, parseInputValue } from '../lib/calculations';
+import { PRESET_COMPANIES, loadPresetYear, getInitialCompanies } from '../lib/presetData';
 
 const ComparisonChart = dynamic(() => import('../components/ComparisonChart'), { ssr: false });
 
+const initialCompanies = getInitialCompanies();
+
 export default function Home() {
-  const [companies, setCompanies] = useState([{ ...DEFAULT_COMPANY }]);
+  const [companies, setCompanies] = useState(initialCompanies);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [selectedMetric, setSelectedMetric] = useState('opIncome');
-  const [statusMessage, setStatusMessage] = useState({ message: '', type: '' });
 
   const currentCompany = companies[selectedIndex];
 
@@ -52,44 +53,19 @@ export default function Home() {
     setSelectedIndex(idx);
   }, []);
 
-  const handleAddCompany = useCallback(() => {
-    setCompanies((prev) => [
-      ...prev,
-      { ...DEFAULT_COMPANY, name: 'Company ' + (prev.length + 1) },
-    ]);
-    setSelectedIndex((prev) => companies.length);
-  }, [companies.length]);
-
-  const handleRemoveCompany = useCallback(() => {
-    if (companies.length <= 1) return;
+  const handleYearChange = useCallback((year) => {
     setCompanies((prev) => {
-      const updated = prev.filter((_, i) => i !== selectedIndex);
+      const company = prev[selectedIndex];
+      if (!company.ticker) return prev;
+      const preset = PRESET_COMPANIES.find((p) => p.ticker === company.ticker);
+      if (!preset) return prev;
+      const loaded = loadPresetYear(preset, year);
+      if (!loaded) return prev;
+      const updated = [...prev];
+      updated[selectedIndex] = loaded;
       return updated;
     });
-    setSelectedIndex((prev) => (prev >= companies.length - 1 ? companies.length - 2 : prev));
-  }, [selectedIndex, companies.length]);
-
-  const handleCompanyLoaded = useCallback((newCompany) => {
-    setCompanies((prev) => {
-      const existingIdx = prev.findIndex((c) => c.name === newCompany.name);
-      if (existingIdx >= 0) {
-        const updated = [...prev];
-        updated[existingIdx] = newCompany;
-        setSelectedIndex(existingIdx);
-        return updated;
-      } else if (prev.length === 1 && prev[0].name.startsWith('Company ')) {
-        setSelectedIndex(0);
-        return [newCompany];
-      } else {
-        setSelectedIndex(prev.length);
-        return [...prev, newCompany];
-      }
-    });
-  }, []);
-
-  const handleStatusChange = useCallback((message, type) => {
-    setStatusMessage({ message, type });
-  }, []);
+  }, [selectedIndex]);
 
   return (
     <>
@@ -101,17 +77,6 @@ export default function Home() {
       <Header />
 
       <main className="container">
-        <section className="section">
-          <h2>Load Company Data</h2>
-          <PresetSelector
-            onCompanyLoaded={handleCompanyLoaded}
-            onStatusChange={handleStatusChange}
-          />
-          {statusMessage.message && (
-            <div className={`upload-status ${statusMessage.type}`} dangerouslySetInnerHTML={{ __html: statusMessage.message }} />
-          )}
-        </section>
-
         <section className="section input-panel">
           <div className="input-grid">
             <FinancialInputs
@@ -120,8 +85,7 @@ export default function Home() {
               selectedIndex={selectedIndex}
               onChange={updateCompany}
               onSelectCompany={handleSelectCompany}
-              onAdd={handleAddCompany}
-              onRemove={handleRemoveCompany}
+              onYearChange={handleYearChange}
               scenario={scenarios[0]}
             />
             <CostSliders

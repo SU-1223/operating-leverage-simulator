@@ -7,8 +7,7 @@ export default function FinancialInputs({
   selectedIndex,
   onChange,
   onSelectCompany,
-  onAdd,
-  onRemove,
+  onYearChange,
   scenario
 }) {
   const handleValueChange = useCallback((field, value) => {
@@ -36,13 +35,26 @@ export default function FinancialInputs({
             onChange={(e) => onSelectCompany(parseInt(e.target.value))}
           >
             {companies.map((c, i) => (
-              <option key={i} value={i}>{c.name}</option>
+              <option key={i} value={i}>{c.ticker ? `${c.ticker} — ${c.name}` : c.name}</option>
             ))}
           </select>
-          <button className="company-action-btn" onClick={onAdd} title="Add company">+</button>
-          <button className="company-action-btn danger" onClick={onRemove} title="Remove company">&times;</button>
+          {company.availableYears && (
+            <select
+              className="year-select-inline"
+              value={company.selectedYear}
+              onChange={(e) => onYearChange(e.target.value)}
+            >
+              {company.availableYears.map((y) => (
+                <option key={y} value={y}>FY{y}</option>
+              ))}
+            </select>
+          )}
         </div>
       </div>
+
+      {company.note && (
+        <div className="company-note">{company.note}</div>
+      )}
 
       <InputField label="Revenue" field="revenue" value={company.revenue} prefix="$" suffix="M" onChange={handleValueChange} onBlur={handleBlur} />
       <InputField label="COGS" field="cogs" value={company.cogs} prefix="$" suffix="M" onChange={handleValueChange} onBlur={handleBlur} />
