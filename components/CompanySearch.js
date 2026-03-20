@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useImperativeHandle, forwardRef } from 'react';
 import { searchCompanies, getFilings, getCompanyFacts } from '../lib/secClient';
 import { INDUSTRY_PROFILES } from '../lib/constants';
 
@@ -21,13 +21,35 @@ function detectIndustryFromSic(sic, sicDescription) {
   return 'default';
 }
 
-export default function CompanySearch({ onCompanyLoaded, onStatusChange }) {
+function CompanySearch({ onCompanyLoaded, onStatusChange }, ref) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
   const [searching, setSearching] = useState(false);
   const [loading, setLoading] = useState(null);
   const [yearSelector, setYearSelector] = useState(null);
   const debounceRef = useRef(null);
+
+  // Expose method for PDF upload to trigger year selector
+  useImperativeHandle(ref, () => ({
+    async activateYearSelector(companyName) {
+      try {
+        const matches = await searchCompanies(companyName);
+        if (matches.length === 0) return;
+        const company = matches[0];
+        const filingsData = await getFilings(company.cik);
+        const factsData = await getCompanyFacts(company.cik);
+        const financials = factsData.financials;
+        const availableYears = financials.availableYears || [];
+        const selectedYear = financials.selectedYear || (availableYears.length > 0 ? availableYears[0] : null);
+        if (availableYears.length > 1) {
+          setYearSelector({ company, filingsData, availableYears, selectedYear });
+        }
+      } catch (err) {
+        // Silently fail — year selector is optional for PDF uploads
+        console.error('Year selector activation failed:', err);
+      }
+    }
+  }));
 
   const handleSearch = useCallback(async (value) => {
     setQuery(value);
@@ -236,3 +258,5 @@ export default function CompanySearch({ onCompanyLoaded, onStatusChange }) {
     </div>
   );
 }
+
+export default forwardRef(CompanySearch);
