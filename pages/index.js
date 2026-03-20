@@ -5,7 +5,6 @@ import Header from '../components/Header';
 import FinancialInputs from '../components/FinancialInputs';
 import CostSliders from '../components/CostSliders';
 import ResultsTable from '../components/ResultsTable';
-import { SCALE_MULTIPLIERS } from '../lib/constants';
 import { calculateScenario, parseInputValue } from '../lib/calculations';
 import { PRESET_COMPANIES, loadPresetYear, getInitialCompanies } from '../lib/presetData';
 
@@ -16,14 +15,29 @@ const initialCompanies = getInitialCompanies();
 export default function Home() {
   const [companies, setCompanies] = useState(initialCompanies);
   const [selectedIndex, setSelectedIndex] = useState(0);
-  const [selectedMetric, setSelectedMetric] = useState('opIncome');
+  const [selectedMetric, setSelectedMetric] = useState('opMargin');
+  const [scaleValue, setScaleValue] = useState(1);
 
   const currentCompany = companies[selectedIndex];
 
-  const scenarios = useMemo(() => {
-    if (!currentCompany) return [];
-    return SCALE_MULTIPLIERS.map((s) => calculateScenario(currentCompany, s));
+  // Max scale = capacity / deliveries (how much room to grow)
+  const maxScale = useMemo(() => {
+    if (!currentCompany || !currentCompany.capacity || !currentCompany.deliveries) return 2;
+    return Math.max(1, currentCompany.capacity / currentCompany.deliveries);
   }, [currentCompany]);
+
+  // Clamp scaleValue to maxScale when company changes
+  const effectiveScale = Math.min(scaleValue, maxScale);
+
+  const baseScenario = useMemo(() => {
+    if (!currentCompany) return null;
+    return calculateScenario(currentCompany, 1);
+  }, [currentCompany]);
+
+  const scaledScenario = useMemo(() => {
+    if (!currentCompany) return null;
+    return calculateScenario(currentCompany, effectiveScale);
+  }, [currentCompany, effectiveScale]);
 
   const updateCompany = useCallback((field, value) => {
     setCompanies((prev) => {
@@ -51,6 +65,7 @@ export default function Home() {
 
   const handleSelectCompany = useCallback((idx) => {
     setSelectedIndex(idx);
+    setScaleValue(1);
   }, []);
 
   const handleYearChange = useCallback((year) => {
@@ -65,7 +80,12 @@ export default function Home() {
       updated[selectedIndex] = loaded;
       return updated;
     });
+    setScaleValue(1);
   }, [selectedIndex]);
+
+  const handleScaleChange = useCallback((value) => {
+    setScaleValue(value);
+  }, []);
 
   return (
     <>
@@ -86,7 +106,7 @@ export default function Home() {
               onChange={updateCompany}
               onSelectCompany={handleSelectCompany}
               onYearChange={handleYearChange}
-              scenario={scenarios[0]}
+              scenario={baseScenario}
             />
             <CostSliders
               cogsFix={currentCompany.cogsFix}
@@ -97,7 +117,14 @@ export default function Home() {
           </div>
         </section>
 
-        <ResultsTable scenarios={scenarios} companyName={currentCompany?.name} />
+        <ResultsTable
+          baseScenario={baseScenario}
+          scaledScenario={scaledScenario}
+          companyName={currentCompany?.name}
+          scaleValue={effectiveScale}
+          maxScale={maxScale}
+          onScaleChange={handleScaleChange}
+        />
 
         <ComparisonChart
           companies={companies}

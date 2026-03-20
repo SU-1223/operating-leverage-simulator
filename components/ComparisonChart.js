@@ -9,8 +9,8 @@ import {
   Legend,
 } from 'chart.js';
 import { Bar } from 'react-chartjs-2';
-import { SCALE_MULTIPLIERS, COMPANY_COLORS, METRIC_INFO } from '../lib/constants';
-import { calculateScenario, formatCurrency, formatPercent } from '../lib/calculations';
+import { COMPANY_COLORS, METRIC_INFO } from '../lib/constants';
+import { calculateScenario, formatCurrency } from '../lib/calculations';
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend);
 
@@ -33,35 +33,45 @@ function formatChartTick(value, unit) {
 
 export default function ComparisonChart({ companies, selectedMetric, onMetricChange }) {
   const info = METRIC_INFO[selectedMetric];
-  const labels = SCALE_MULTIPLIERS.map((s) => s + 'x');
 
   const data = useMemo(() => {
-    const datasets = companies.map((c, i) => {
-      const color = COMPANY_COLORS[i % COMPANY_COLORS.length];
-      const values = SCALE_MULTIPLIERS.map((scale) => calculateScenario(c, scale)[selectedMetric]);
-      return {
-        label: c.name,
-        data: values,
-        backgroundColor: color,
-        borderColor: color,
-        borderWidth: 1,
-      };
-    });
-    return { labels, datasets };
-  }, [companies, selectedMetric, labels]);
+    const labels = companies.map((c) => c.ticker || c.name);
+    const values = companies.map((c) => calculateScenario(c, 1)[selectedMetric]);
+    const colors = companies.map((_, i) => COMPANY_COLORS[i % COMPANY_COLORS.length]);
+
+    return {
+      labels,
+      datasets: [
+        {
+          label: info.label,
+          data: values,
+          backgroundColor: colors,
+          borderColor: colors,
+          borderWidth: 1,
+        },
+      ],
+    };
+  }, [companies, selectedMetric, info]);
 
   const options = useMemo(() => ({
     responsive: true,
     maintainAspectRatio: false,
     plugins: {
-      legend: { display: true, position: 'top' },
+      legend: { display: false },
       tooltip: {
         callbacks: {
-          label: (ctx) => ctx.dataset.label + ': ' + formatChartValue(ctx.raw, info.unit),
+          title: (ctx) => {
+            const idx = ctx[0].dataIndex;
+            return companies[idx]?.name || ctx[0].label;
+          },
+          label: (ctx) => info.label + ': ' + formatChartValue(ctx.raw, info.unit),
         },
       },
     },
     scales: {
+      x: {
+        ticks: { font: { weight: 600 } },
+      },
       y: {
         title: { display: true, text: info.yLabel },
         ticks: {
@@ -69,7 +79,7 @@ export default function ComparisonChart({ companies, selectedMetric, onMetricCha
         },
       },
     },
-  }), [info]);
+  }), [info, companies]);
 
   return (
     <section className="section">
