@@ -266,6 +266,26 @@ export default async function handler(req, res) {
       // Pass targetYear if specified
       const financials = extractFinancialsFromFacts(data.facts || {}, year || null);
 
+      // Merge filing years from submissions to fill gaps in XBRL
+      try {
+        const filingsUrl = `https://data.sec.gov/submissions/CIK${cik10}.json`;
+        const filingsRes = await fetchSEC(filingsUrl);
+        const filingsData = await filingsRes.json();
+        const recent = filingsData.filings?.recent || {};
+        const allYears = new Set(financials.availableYears || []);
+        if (recent.form) {
+          for (let i = 0; i < recent.form.length; i++) {
+            if (recent.form[i] === '10-K' && recent.primaryDocument?.[i]) {
+              const match = recent.primaryDocument[i].match(/(\d{4})\d{4}\./);
+              if (match) allYears.add(match[1]);
+            }
+          }
+        }
+        financials.availableYears = Array.from(allYears).sort((a, b) => b.localeCompare(a));
+      } catch (e) {
+        // Ignore — filing years lookup is best-effort
+      }
+
       return res.status(200).json({
         entityName: data.entityName,
         financials,

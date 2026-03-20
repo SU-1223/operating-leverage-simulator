@@ -3,13 +3,14 @@ import Head from 'next/head';
 import dynamic from 'next/dynamic';
 import Header from '../components/Header';
 import UploadArea from '../components/UploadArea';
-import CompanySearch from '../components/CompanySearch';
+import CompanySearch, { toMillions, detectIndustryFromSic } from '../components/CompanySearch';
 import FinancialInputs from '../components/FinancialInputs';
 import CostSliders from '../components/CostSliders';
 import ResultsTable from '../components/ResultsTable';
 import { SCALE_MULTIPLIERS, DEFAULT_COMPANY, INDUSTRY_PROFILES } from '../lib/constants';
 import { calculateScenario, parseInputValue } from '../lib/calculations';
-import { extractTextFromPDF, extractFinancials, detectIndustry, extractCompanyName, toMillions } from '../lib/pdfParser';
+import { extractTextFromPDF, extractFinancials, detectIndustry, extractCompanyName, toMillions as pdfToMillions } from '../lib/pdfParser';
+import { searchCompanies, getFilings, getCompanyFacts } from '../lib/secClient';
 
 const ComparisonChart = dynamic(() => import('../components/ComparisonChart'), { ssr: false });
 
@@ -18,6 +19,7 @@ export default function Home() {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [selectedMetric, setSelectedMetric] = useState('opIncome');
   const [uploadStatus, setUploadStatus] = useState({ message: '', type: '' });
+  const [yearSelector, setYearSelector] = useState(null);
 
   const currentCompany = companies[selectedIndex];
 
@@ -93,6 +95,73 @@ export default function Home() {
     setUploadStatus({ message, type });
   }, []);
 
+  // Year selector ready callback (from search or PDF)
+  const handleYearSelectorReady = useCallback((data) => {
+    setYearSelector(data);
+  }, []);
+
+  // Year change handler — loads XBRL data for the selected year
+  const handleYearChange = useCallback(async (e) => {
+    const year = e.target.value;
+    if (!yearSelector) return;
+    setYearSelector((prev) => ({ ...prev, selectedYear: year }));
+
+    const { company, filingsData } = yearSelector;
+    setUploadStatus({ message: 'Loading FY' + year + ' data...', type: 'loading' });
+
+    try {
+      const factsData = await getCompanyFacts(company.cik, year);
+      const financials = factsData.financials;
+
+      const industryKey = detectIndustryFromSic(
+        filingsData.company?.sic,
+        filingsData.company?.sicDescription
+      );
+      const profile = INDUSTRY_PROFILES[industryKey];
+
+      let deliveries = null;
+      let volumeSource = null;
+      if (financials.volume && financials.volume.value) {
+        deliveries = financials.volume.value;
+        volumeSource = financials.volume.concept;
+      }
+
+      const newCompany = {
+        name: filingsData.company?.name || factsData.entityName || company.name,
+        revenue: financials.revenue ? toMillions(financials.revenue) : 1000,
+        cogs: financials.cogs ? toMillions(financials.cogs) : 800,
+        rd: financials.rd ? toMillions(financials.rd) : 150,
+        sga: financials.sga ? toMillions(financials.sga) : 100,
+        deliveries: deliveries || 0,
+        cogsFix: financials.estimatedSplits?.cogsFix ?? profile.cogsFix,
+        rdFix: financials.estimatedSplits?.rdFix ?? profile.rdFix,
+        sgaFix: financials.estimatedSplits?.sgaFix ?? profile.sgaFix,
+      };
+
+      handleCompanyLoaded(newCompany);
+
+      const found = [financials.revenue, financials.cogs, financials.rd, financials.sga]
+        .filter((v) => v !== null);
+      let msg = '<strong>' + newCompany.name + '</strong> loaded from SEC EDGAR (FY' + year + '). Extracted ' + found.length + '/4 financial figures.';
+      if (found.length === 0) {
+        msg += '<div class="detected-industry" style="color:#dc2626;">No XBRL data available for FY' + year + '. Data may not yet be filed in structured format.</div>';
+      }
+      if (volumeSource) {
+        msg += '<div class="detected-industry">Delivery volume: ' + deliveries.toLocaleString() + ' units (from XBRL: ' + volumeSource + ')</div>';
+      } else {
+        msg += '<div class="detected-industry" style="color:#dc2626;">Delivery volume not found in SEC filing. Please enter manually.</div>';
+      }
+      if (financials.estimatedSplits) {
+        msg += '<div class="detected-industry">Fixed/Variable split via High-Low method: ' +
+          'COGS ' + newCompany.cogsFix + '% fixed, R&D ' + newCompany.rdFix + '% fixed, SG&A ' + newCompany.sgaFix + '% fixed</div>';
+      }
+      setUploadStatus({ message: msg, type: 'success' });
+    } catch (err) {
+      setUploadStatus({ message: 'Error loading FY' + year + ' data: ' + err.message, type: 'error' });
+    }
+  }, [yearSelector, handleCompanyLoaded]);
+
+  // PDF upload handler
   const handleFilesSelected = useCallback(async (files) => {
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
@@ -117,31 +186,17 @@ export default function Home() {
 
         const newCompany = {
           name: companyName,
-          revenue: financials.revenue !== null ? toMillions(financials.revenue) : 1000,
-          cogs: financials.cogs !== null ? toMillions(financials.cogs) : 800,
-          rd: financials.rd !== null ? toMillions(financials.rd) : 150,
-          sga: financials.sga !== null ? toMillions(financials.sga) : 100,
+          revenue: financials.revenue !== null ? pdfToMillions(financials.revenue) : 1000,
+          cogs: financials.cogs !== null ? pdfToMillions(financials.cogs) : 800,
+          rd: financials.rd !== null ? pdfToMillions(financials.rd) : 150,
+          sga: financials.sga !== null ? pdfToMillions(financials.sga) : 100,
           deliveries: financials.deliveries !== null ? financials.deliveries : 50000,
           cogsFix: (financials.estimatedSplits && financials.estimatedSplits.cogsFix !== null) ? financials.estimatedSplits.cogsFix : profile.cogsFix,
           rdFix: (financials.estimatedSplits && financials.estimatedSplits.rdFix !== null) ? financials.estimatedSplits.rdFix : profile.rdFix,
           sgaFix: (financials.estimatedSplits && financials.estimatedSplits.sgaFix !== null) ? financials.estimatedSplits.sgaFix : profile.sgaFix,
         };
 
-        setCompanies((prev) => {
-          const existingIdx = prev.findIndex((c) => c.name === companyName);
-          if (existingIdx >= 0) {
-            const updated = [...prev];
-            updated[existingIdx] = newCompany;
-            setSelectedIndex(existingIdx);
-            return updated;
-          } else if (prev.length === 1 && prev[0].name.startsWith('Company ')) {
-            setSelectedIndex(0);
-            return [newCompany];
-          } else {
-            setSelectedIndex(prev.length);
-            return [...prev, newCompany];
-          }
-        });
+        handleCompanyLoaded(newCompany);
 
         const found = [financials.revenue, financials.cogs, financials.rd, financials.sga, financials.deliveries]
           .filter((v) => v !== null);
@@ -153,11 +208,29 @@ export default function Home() {
           msg += '<div class="detected-industry">Industry: <strong>' + profile.label + '</strong> (split estimated from industry averages)</div>';
         }
         setUploadStatus({ message: msg, type: 'success' });
+
+        // Search SEC for this company to enable year selector
+        try {
+          const matches = await searchCompanies(companyName);
+          if (matches.length > 0) {
+            const secCompany = matches[0];
+            const filingsData = await getFilings(secCompany.cik);
+            const factsData = await getCompanyFacts(secCompany.cik);
+            const secFinancials = factsData.financials;
+            const availableYears = secFinancials.availableYears || [];
+            const selectedYear = secFinancials.selectedYear || (availableYears.length > 0 ? availableYears[0] : null);
+            if (availableYears.length > 1) {
+              setYearSelector({ company: secCompany, filingsData, availableYears, selectedYear });
+            }
+          }
+        } catch (secErr) {
+          // Year selector is best-effort for PDF uploads
+        }
       } catch (err) {
         setUploadStatus({ message: 'Error reading PDF: ' + err.message, type: 'error' });
       }
     }
-  }, []);
+  }, [handleCompanyLoaded]);
 
   return (
     <>
@@ -174,7 +247,23 @@ export default function Home() {
           <CompanySearch
             onCompanyLoaded={handleCompanyLoaded}
             onStatusChange={handleSearchStatus}
+            onYearSelectorReady={handleYearSelectorReady}
           />
+          {yearSelector && yearSelector.availableYears.length > 1 && (
+            <div className="year-selector">
+              <label htmlFor="yearSelect">Fiscal Year: </label>
+              <select
+                id="yearSelect"
+                className="year-select"
+                value={yearSelector.selectedYear}
+                onChange={handleYearChange}
+              >
+                {yearSelector.availableYears.map((y) => (
+                  <option key={y} value={y}>FY{y}</option>
+                ))}
+              </select>
+            </div>
+          )}
           <div className="upload-divider">or</div>
           <UploadArea
             onFilesSelected={handleFilesSelected}
