@@ -213,12 +213,6 @@ export default function Home() {
         />
       </main>
 
-      <footer className="footer">
-        <div className="container">
-          <p>Built for Columbia Business School &mdash; Technology Strategy, Spring 2026</p>
-          <p className="muted">Inspired by Rivian &amp; Tesla operating leverage analyses</p>
-        </div>
-      </footer>
     </>
   );
 }

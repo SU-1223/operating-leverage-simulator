@@ -73,20 +73,12 @@ export default function CompanySearch({ onCompanyLoaded, onStatusChange }) {
       );
       const profile = INDUSTRY_PROFILES[industryKey];
 
-      // Delivery volume: use XBRL data if available, otherwise estimate from revenue
-      let deliveries = 50000;
+      // Delivery volume: use XBRL data only, error if not available
+      let deliveries = null;
       let volumeSource = null;
       if (financials.volume && financials.volume.value) {
         deliveries = financials.volume.value;
         volumeSource = financials.volume.concept;
-      } else if (financials.revenue) {
-        // Estimate volume from revenue using industry-typical ASP
-        const industryASP = {
-          automotive: 50000, tech_hardware: 800, software: 200,
-          pharma: 500, retail: 50, media: 120, energy: 100000, financial: 10000, default: 1000,
-        };
-        const asp = industryASP[industryKey] || 1000;
-        deliveries = Math.round(financials.revenue / asp);
       }
 
       const newCompany = {
@@ -95,7 +87,7 @@ export default function CompanySearch({ onCompanyLoaded, onStatusChange }) {
         cogs: financials.cogs ? toMillions(financials.cogs) : 800,
         rd: financials.rd ? toMillions(financials.rd) : 150,
         sga: financials.sga ? toMillions(financials.sga) : 100,
-        deliveries: deliveries,
+        deliveries: deliveries || 0,
         cogsFix: financials.estimatedSplits?.cogsFix ?? profile.cogsFix,
         rdFix: financials.estimatedSplits?.rdFix ?? profile.rdFix,
         sgaFix: financials.estimatedSplits?.sgaFix ?? profile.sgaFix,
@@ -109,7 +101,7 @@ export default function CompanySearch({ onCompanyLoaded, onStatusChange }) {
       if (volumeSource) {
         msg += '<div class="detected-industry">📦 Delivery volume: ' + deliveries.toLocaleString() + ' units (from XBRL: ' + volumeSource + ')</div>';
       } else {
-        msg += '<div class="detected-industry">📦 Delivery volume: ' + deliveries.toLocaleString() + ' units (estimated from revenue &amp; industry ASP)</div>';
+        msg += '<div class="detected-industry" style="color:#dc2626;">⚠️ Delivery volume not found in SEC filing. Please enter manually.</div>';
       }
       if (financials.estimatedSplits) {
         msg += '<div class="detected-industry">Fixed/Variable split estimated via High-Low method: ' +
