@@ -91,6 +91,7 @@ export default function ComparisonChart({ companies, selectedMetric, onMetricCha
             <optgroup label="Margins (%)">
               <option value="grossMargin">Gross Margin</option>
               <option value="opMargin">Operating Margin</option>
+              <option value="utilization">Utilization Rate</option>
             </optgroup>
             <optgroup label="Per Unit ($)">
               <option value="revenuePerUnit">Revenue / Unit</option>

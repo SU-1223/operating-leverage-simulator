@@ -49,6 +49,7 @@ export default function FinancialInputs({
       <InputField label="R&D" field="rd" value={company.rd} prefix="$" suffix="M" onChange={handleValueChange} onBlur={handleBlur} />
       <InputField label="SG&A" field="sga" value={company.sga} prefix="$" suffix="M" onChange={handleValueChange} onBlur={handleBlur} />
       <InputField label="Delivery Volume" field="deliveries" value={company.deliveries} suffix="units" onChange={handleValueChange} onBlur={handleBlur} />
+      <InputField label="Production Capacity" field="capacity" value={company.capacity} suffix="units" onChange={handleValueChange} onBlur={handleBlur} />
 
       {scenario && (
         <div className="current-summary">

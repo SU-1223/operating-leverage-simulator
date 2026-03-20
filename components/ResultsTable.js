@@ -35,7 +35,7 @@ export default function ResultsTable({ scenarios, companyName }) {
                 <tr key={metric.key} className={rowClass.trim()}>
                   <td>{metric.label}</td>
                   {scenarios.map((s, i) => {
-                    const value = s[metric.key];
+                    const value = s[metric.key] ?? 0;
                     let formatted;
                     let colorClass = '';
 

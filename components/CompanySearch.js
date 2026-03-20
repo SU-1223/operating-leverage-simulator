@@ -85,6 +85,7 @@ export default function CompanySearch({ onCompanyLoaded, onStatusChange, onYearS
         rd: financials.rd ? toMillions(financials.rd) : 150,
         sga: financials.sga ? toMillions(financials.sga) : 100,
         deliveries: deliveries || 0,
+        capacity: 0,
         cogsFix: financials.estimatedSplits?.cogsFix ?? profile.cogsFix,
         rdFix: financials.estimatedSplits?.rdFix ?? profile.rdFix,
         sgaFix: financials.estimatedSplits?.sgaFix ?? profile.sgaFix,
