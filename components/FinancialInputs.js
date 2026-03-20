@@ -58,6 +58,9 @@ export default function FinancialInputs({
 
       <InputField label="Revenue" field="revenue" value={company.revenue} prefix="$" suffix="M" onChange={handleValueChange} onBlur={handleBlur} />
       <InputField label="COGS" field="cogs" value={company.cogs} prefix="$" suffix="M" onChange={handleValueChange} onBlur={handleBlur} />
+      <div className="depreciation-note">
+        Incl. D&amp;A (Fixed): ${Math.round(company.cogs * company.cogsFix / 100).toLocaleString('en-US')}M ({company.cogsFix}% of COGS)
+      </div>
       <InputField label="R&D" field="rd" value={company.rd} prefix="$" suffix="M" onChange={handleValueChange} onBlur={handleBlur} />
       <InputField label="SG&A" field="sga" value={company.sga} prefix="$" suffix="M" onChange={handleValueChange} onBlur={handleBlur} />
       <InputField label="Delivery Volume" field="deliveries" value={company.deliveries} suffix="units" onChange={handleValueChange} onBlur={handleBlur} />

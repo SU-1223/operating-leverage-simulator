@@ -136,6 +136,15 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+.depreciation-note {
+  margin: -8px 0 10px;
+  padding: 4px 12px;
+  font-size: 12px;
+  color: #64748b;
+  background: #f8fafc;
+  border-radius: 4px;
+}
+
 /* Current Summary */
 .current-summary {
   margin-top: 16px;
