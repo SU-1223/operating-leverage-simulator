@@ -499,7 +499,8 @@ tbody tr.highlight-row td {
   color: #64748b;
 }
 
-.footer .muted {
+.footer .muted,
+.footer .footer-sub {
   font-size: 12px;
   opacity: 0.7;
   margin-top: 4px;

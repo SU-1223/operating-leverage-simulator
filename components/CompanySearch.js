@@ -26,7 +26,7 @@ export default function CompanySearch({ onCompanyLoaded, onStatusChange }) {
   const [results, setResults] = useState([]);
   const [searching, setSearching] = useState(false);
   const [loading, setLoading] = useState(null);
-  const [yearSelector, setYearSelector] = useState(null); // { company, filingsData, availableYears, selectedYear }
+  const [yearSelector, setYearSelector] = useState(null);
   const debounceRef = useRef(null);
 
   const handleSearch = useCallback(async (value) => {
