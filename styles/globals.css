@@ -592,6 +592,41 @@ tbody tr.highlight-row td {
   font-weight: 600;
 }
 
+.year-selector {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 10px 16px;
+  background: #f0f9ff;
+  border: 1px solid #bae6fd;
+  border-radius: 8px;
+  font-size: 14px;
+  color: #1e3a5f;
+}
+
+.year-selector label {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.year-select {
+  padding: 6px 12px;
+  border: 1px solid #93c5fd;
+  border-radius: 6px;
+  background: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  color: #1e3a5f;
+  cursor: pointer;
+  outline: none;
+}
+
+.year-select:focus {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+}
+
 .upload-divider {
   display: flex;
   align-items: center;

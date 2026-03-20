@@ -2,7 +2,7 @@
 //
 // Endpoints:
 //   GET /api/sec?action=filings&cik=0001318605 — get 10-K filing list
-//   GET /api/sec?action=facts&cik=0001318605    — get XBRL financial facts
+//   GET /api/sec?action=facts&cik=0001318605    — get XBRL financial facts (all years)
 
 const SEC_USER_AGENT = 'OperatingLeverageSimulator/1.0 (columbia-business-school@edu)';
 
@@ -19,19 +19,32 @@ async function fetchSEC(url) {
   return res;
 }
 
-// Extract the most recent 10-K value for a given XBRL concept
-function getLatest10KValue(factData) {
+// Get value for a specific fiscal year end from 10-K filings
+function getValueForYear(factData, targetYear) {
   if (!factData?.units) return null;
-  // Try USD first, then other units
   const units = factData.units.USD || factData.units.shares || Object.values(factData.units)[0];
   if (!units) return null;
 
-  // Filter to 10-K filings and get the most recent
-  const annual = units
-    .filter((d) => d.form === '10-K' && d.val !== undefined)
+  const match = units
+    .filter((d) => d.form === '10-K' && d.val !== undefined && d.end && d.end.startsWith(targetYear))
     .sort((a, b) => (b.end || '').localeCompare(a.end || ''));
 
-  return annual.length > 0 ? annual[0].val : null;
+  return match.length > 0 ? match[0].val : null;
+}
+
+// Get all available fiscal years for a concept (from 10-K filings)
+function getAvailableYears(factData) {
+  if (!factData?.units) return [];
+  const units = factData.units.USD || Object.values(factData.units)[0];
+  if (!units) return [];
+
+  const years = new Set();
+  for (const d of units) {
+    if (d.form === '10-K' && d.val !== undefined && d.end) {
+      years.add(d.end.substring(0, 4));
+    }
+  }
+  return Array.from(years).sort((a, b) => b.localeCompare(a)); // newest first
 }
 
 // Get recent annual values for High-Low method (oldest to newest)
@@ -59,7 +72,7 @@ function getAnnualValues(factData, limit = 3) {
 }
 
 // Search all namespaces for volume/delivery/unit concepts
-function extractVolumeFromFacts(facts) {
+function extractVolumeFromFacts(facts, targetYear) {
   const volumeKeywords = [
     'delivery', 'deliveries', 'unitssold', 'vehicledelivery', 'vehicledeliveries',
     'vehiclessold', 'production', 'unitsdelivered', 'unitsshipped',
@@ -77,24 +90,26 @@ function extractVolumeFromFacts(facts) {
       const isVolumeRelated = volumeKeywords.some((kw) => lower.includes(kw));
       if (!isVolumeRelated) continue;
 
-      // Look for pure unit counts (not USD values)
       if (!conceptData?.units) continue;
-      // Prefer "pure" unit (non-USD, non-shares) data
       const unitKeys = Object.keys(conceptData.units);
       const nonMonetary = unitKeys.find(
         (u) => u !== 'USD' && u !== 'USD/shares' && u !== 'shares'
       );
       const unitKey = nonMonetary || unitKeys.find((u) => u === 'pure') || null;
-      if (!unitKey && conceptData.units.USD) continue; // skip monetary values
+      if (!unitKey && conceptData.units.USD) continue;
 
       const entries = conceptData.units[unitKey || unitKeys[0]] || [];
-      const annual = entries
+      let annual = entries
         .filter((d) => d.form === '10-K' && d.val !== undefined && d.val > 0 && d.end)
         .sort((a, b) => (b.end || '').localeCompare(a.end || ''));
 
+      // If targetYear specified, filter to that year
+      if (targetYear) {
+        annual = annual.filter((d) => d.end.startsWith(targetYear));
+      }
+
       if (annual.length > 0) {
         const val = annual[0].val;
-        // Prefer larger, more meaningful volume numbers
         if (!bestVal || val > bestVal) {
           bestVal = val;
           bestMatch = {
@@ -111,68 +126,60 @@ function extractVolumeFromFacts(facts) {
   return bestMatch;
 }
 
-function extractFinancialsFromFacts(facts) {
+// Find the matching XBRL concept for a category
+function findConcept(usGaap, conceptNames) {
+  for (const c of conceptNames) {
+    if (usGaap[c]) return usGaap[c];
+  }
+  return null;
+}
+
+function extractFinancialsFromFacts(facts, targetYear) {
   const usGaap = facts['us-gaap'] || {};
 
-  // Revenue
+  // Concept definitions
   const revenueConcepts = [
     'Revenues', 'RevenueFromContractWithCustomerExcludingAssessedTax',
     'RevenueFromContractWithCustomerIncludingAssessedTax', 'SalesRevenueNet',
     'SalesRevenueGoodsNet', 'TotalRevenuesAndOtherIncome',
   ];
-  let revenue = null;
-  let revenueYears = null;
-  for (const c of revenueConcepts) {
-    if (usGaap[c]) {
-      revenue = getLatest10KValue(usGaap[c]);
-      revenueYears = getAnnualValues(usGaap[c]);
-      if (revenue) break;
-    }
-  }
-
-  // COGS
   const cogsConcepts = [
     'CostOfRevenue', 'CostOfGoodsAndServicesSold', 'CostOfGoodsSold',
     'CostOfGoodsAndServiceExcludingDepreciationDepletionAndAmortization',
   ];
-  let cogs = null;
-  let cogsYears = null;
-  for (const c of cogsConcepts) {
-    if (usGaap[c]) {
-      cogs = getLatest10KValue(usGaap[c]);
-      cogsYears = getAnnualValues(usGaap[c]);
-      if (cogs) break;
-    }
-  }
-
-  // R&D
-  const rdConcepts = ['ResearchAndDevelopmentExpense', 'ResearchAndDevelopmentExpenseExcludingAcquiredInProcessCost'];
-  let rd = null;
-  let rdYears = null;
-  for (const c of rdConcepts) {
-    if (usGaap[c]) {
-      rd = getLatest10KValue(usGaap[c]);
-      rdYears = getAnnualValues(usGaap[c]);
-      if (rd) break;
-    }
-  }
-
-  // SG&A
+  const rdConcepts = [
+    'ResearchAndDevelopmentExpense',
+    'ResearchAndDevelopmentExpenseExcludingAcquiredInProcessCost',
+  ];
   const sgaConcepts = [
-    'SellingGeneralAndAdministrativeExpense', 'GeneralAndAdministrativeExpense',
+    'SellingGeneralAndAdministrativeExpense',
+    'GeneralAndAdministrativeExpense',
     'SellingAndMarketingExpense',
   ];
-  let sga = null;
-  let sgaYears = null;
-  for (const c of sgaConcepts) {
-    if (usGaap[c]) {
-      sga = getLatest10KValue(usGaap[c]);
-      sgaYears = getAnnualValues(usGaap[c]);
-      if (sga) break;
-    }
-  }
 
-  // High-Low method for F/V split estimation
+  const revenueFact = findConcept(usGaap, revenueConcepts);
+  const cogsFact = findConcept(usGaap, cogsConcepts);
+  const rdFact = findConcept(usGaap, rdConcepts);
+  const sgaFact = findConcept(usGaap, sgaConcepts);
+
+  // Collect all available years from revenue (primary source)
+  let availableYears = revenueFact ? getAvailableYears(revenueFact) : [];
+
+  // If no targetYear, use the most recent
+  const year = targetYear || (availableYears.length > 0 ? availableYears[0] : null);
+
+  // Extract values for the target year
+  const revenue = year && revenueFact ? getValueForYear(revenueFact, year) : null;
+  const cogs = year && cogsFact ? getValueForYear(cogsFact, year) : null;
+  const rd = year && rdFact ? getValueForYear(rdFact, year) : null;
+  const sga = year && sgaFact ? getValueForYear(sgaFact, year) : null;
+
+  // High-Low method for F/V split estimation (uses all years)
+  const revenueYears = revenueFact ? getAnnualValues(revenueFact) : null;
+  const cogsYears = cogsFact ? getAnnualValues(cogsFact) : null;
+  const rdYears = rdFact ? getAnnualValues(rdFact) : null;
+  const sgaYears = sgaFact ? getAnnualValues(sgaFact) : null;
+
   let estimatedSplits = null;
   if (revenueYears && revenueYears.length >= 2) {
     let highIdx = 0, lowIdx = 0;
@@ -184,10 +191,10 @@ function extractFinancialsFromFacts(facts) {
       const revDiff = revenueYears[highIdx] - revenueYears[lowIdx];
       estimatedSplits = {};
 
-      function estimateFixed(costYears) {
-        if (!costYears || costYears.length < 2) return null;
-        const variableRate = (costYears[highIdx] - costYears[lowIdx]) / revDiff;
-        const mostRecentCost = costYears[costYears.length - 1];
+      function estimateFixed(costYrs) {
+        if (!costYrs || costYrs.length < 2) return null;
+        const variableRate = (costYrs[highIdx] - costYrs[lowIdx]) / revDiff;
+        const mostRecentCost = costYrs[costYrs.length - 1];
         const mostRecentRev = revenueYears[revenueYears.length - 1];
         const variablePortion = variableRate * mostRecentRev;
         const fixedPortion = mostRecentCost - variablePortion;
@@ -202,13 +209,17 @@ function extractFinancialsFromFacts(facts) {
   }
 
   // Volume / deliveries
-  const volumeData = extractVolumeFromFacts(facts);
+  const volumeData = extractVolumeFromFacts(facts, year);
 
-  return { revenue, cogs, rd, sga, estimatedSplits, volume: volumeData };
+  return {
+    revenue, cogs, rd, sga, estimatedSplits, volume: volumeData,
+    selectedYear: year,
+    availableYears,
+  };
 }
 
 export default async function handler(req, res) {
-  const { action, cik } = req.query;
+  const { action, cik, year } = req.query;
 
   try {
     if (action === 'filings' && cik) {
@@ -229,7 +240,7 @@ export default async function handler(req, res) {
               primaryDocument: recent.primaryDocument[i],
             });
           }
-          if (filings10K.length >= 3) break;
+          if (filings10K.length >= 10) break;
         }
       }
 
@@ -252,7 +263,8 @@ export default async function handler(req, res) {
       const secRes = await fetchSEC(factsUrl);
       const data = await secRes.json();
 
-      const financials = extractFinancialsFromFacts(data.facts || {});
+      // Pass targetYear if specified
+      const financials = extractFinancialsFromFacts(data.facts || {}, year || null);
 
       return res.status(200).json({
         entityName: data.entityName,
